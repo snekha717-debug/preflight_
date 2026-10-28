@@ -1,0 +1,3 @@
+@echo off
+echo Starting Preflight FastAPI backend...
+python -m uvicorn main:app --reload --port 8000

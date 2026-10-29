@@ -778,6 +778,7 @@ def download_compliance_report(check_id: int, format: str = Query("md")):
         md_lines.append(f"{idx}. [{i.get('severity','').upper()}] {i.get('title','')} (Page {i.get('page_number',1)}): {i.get('what_is_wrong')} -> Fix: `{i.get('suggested_replacement')}`")
     return Response(content="\n".join(md_lines), media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="preflight_report_{check_id}.md"'})
 
+
 @router.post("/check-image")
 async def check_creative_image(
     file: UploadFile = File(...),
@@ -802,7 +803,6 @@ async def check_creative_image(
             raise HTTPException(status_code=404, detail="Guideline not found.")
 
         issues = []
-        # Check for minimum resolution standard
         if width < 600 or height < 600:
             issues.append({
                 "category": "image_quality",
@@ -834,6 +834,7 @@ async def check_creative_image(
         return saved
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image Processing Error: {str(e)}")
+
 
 @router.post("/benchmark/run")
 def run_accuracy_benchmark(payload: BenchmarkRequest):

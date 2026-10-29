@@ -1,7 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect, useRef } from "react";
 
-// src/App.jsx
 const API_BASE =
   window.location.hostname === "localhost"
     ? "http://localhost:8000"
@@ -13,6 +12,8 @@ const CATEGORY_COLORS = {
   tone: "bg-amber-50 text-amber-700 border-amber-200",
   messaging: "bg-blue-50 text-blue-700 border-blue-200",
   claim: "bg-rose-50 text-rose-700 border-rose-200",
+  image_quality: "bg-orange-50 text-orange-700 border-orange-200",
+  visual_brand_rule: "bg-indigo-50 text-indigo-700 border-indigo-200",
 };
 
 const SEVERITY_BADGES = {
@@ -32,12 +33,17 @@ export default function App() {
   const [activeGuideline, setActiveGuideline] = useState(null);
   const [ruleFilter, setRuleFilter] = useState("all");
 
-  // Content Check State
+  // Content Check State (Copy)
   const [purpose, setPurpose] = useState("Announce a product launch to enterprise clients");
   const [marketingContent, setMarketingContent] = useState(
     "Unlock unprecedented hyper-growth with our revolutionary, ground-breaking AI solution. We guarantee 10x ROI overnight, crushing the outdated competition without compromise! Join 100,000+ top enterprises that blindly trust our proprietary cloud algorithms to dominate their industry."
   );
   const [auditResult, setAuditResult] = useState(null);
+
+  // Creative Image State
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageAuditResult, setImageAuditResult] = useState(null);
 
   // Review History & Benchmark State
   const [historyList, setHistoryList] = useState([]);
@@ -45,6 +51,7 @@ export default function App() {
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
 
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     loadInitialData();
@@ -90,7 +97,7 @@ export default function App() {
     }
   }
 
-  // 1. BETTER PDF READING & APPROVAL ACTIONS
+  // 1. PDF READING & APPROVAL ACTIONS
   async function handlePdfUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -160,7 +167,7 @@ export default function App() {
     }
   }
 
-  // 2. BETTER CONTENT CHECKING ACTIONS
+  // 2. CONTENT & IMAGE CHECKING ACTIONS
   async function handleCheckContent() {
     if (!activeGuideline) {
       setErrorMsg("Please upload or select a brand guideline first.");
@@ -190,27 +197,44 @@ export default function App() {
     }
   }
 
-  function handleApplyFix(issue) {
-    if (!issue.suggested_replacement) return;
-    let updated = marketingContent;
-    if (issue.offending_text && issue.offending_text !== "(Missing from content)") {
-      updated = updated.replace(new RegExp(issue.offending_text, "i"), issue.suggested_replacement);
-    } else if (issue.category === "required_phrase") {
-      updated = updated.trim() + "\n\n" + issue.suggested_replacement;
-    }
-    setMarketingContent(updated);
+  function handleImageSelection(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setImageAuditResult(null);
+  }
 
-    if (auditResult) {
-      const newIssues = auditResult.issues.filter((i) => i !== issue);
-      setAuditResult({
-        ...auditResult,
-        issues: newIssues,
-        overall_score: Math.min(100, auditResult.overall_score + 15),
+  async function handleCheckImage() {
+    if (!imageFile) {
+      setErrorMsg("Please select or drop a marketing creative image first.");
+      return;
+    }
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const formData = new FormData();
+      formData.append("file", imageFile);
+      if (activeGuideline) {
+        formData.append("guideline_id", activeGuideline.id);
+      }
+      formData.append("content_title", purpose || "Creative Image Check");
+
+      const res = await fetch(`${API_BASE}/check-image`, {
+        method: "POST",
+        body: formData,
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Image compliance check failed");
+      setImageAuditResult(data);
+      fetchHistory();
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
-  // 3. TESTING & BENCHMARK ACTIONS
   async function handleRunBenchmark() {
     if (!activeGuideline) return;
     setLoading(true);
@@ -248,10 +272,9 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc] text-slate-800 font-sans">
-      {/* ----------------- LEFT SIDEBAR (ORIGINAL UI) ----------------- */}
+      {/* LEFT SIDEBAR */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between p-4 shrink-0">
         <div className="space-y-6">
-          {/* Logo & Badge */}
           <div className="flex items-center gap-2.5 px-2">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold shadow-sm">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -266,14 +289,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Navigation Links */}
           <nav className="space-y-1">
             <button
               onClick={() => setCurrentView("dashboard")}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer ${
-                currentView === "dashboard"
-                  ? "bg-blue-50 text-blue-600 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                currentView === "dashboard" ? "bg-blue-50 text-blue-600 font-semibold" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -285,9 +305,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView("guidelines")}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer ${
-                currentView === "guidelines"
-                  ? "bg-blue-50 text-blue-600 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                currentView === "guidelines" ? "bg-blue-50 text-blue-600 font-semibold" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -299,9 +317,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView("rules")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer ${
-                currentView === "rules"
-                  ? "bg-blue-50 text-blue-600 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                currentView === "rules" ? "bg-blue-50 text-blue-600 font-semibold" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -318,9 +334,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView("history")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer ${
-                currentView === "history"
-                  ? "bg-blue-50 text-blue-600 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                currentView === "history" ? "bg-blue-50 text-blue-600 font-semibold" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -336,7 +350,6 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Bottom Sidebar Widget */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
           <div className="flex items-center justify-between font-bold text-slate-800">
             <span className="flex items-center gap-1.5">
@@ -351,16 +364,14 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ----------------- MAIN WORKSPACE CONTENT ----------------- */}
+      {/* MAIN WORKSPACE */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header Breadcrumbs & Status */}
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <span>Workspace</span>
             <span>&gt;</span>
             <span className="font-semibold text-slate-800 capitalize">{currentView}</span>
           </div>
-
           <div className="flex items-center gap-4">
             <span className="text-xs text-slate-500 font-mono">FastAPI backend at /api</span>
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full text-xs font-medium text-slate-700">
@@ -370,7 +381,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main View Area */}
         <main className="p-8 max-w-5xl w-full mx-auto space-y-6">
           {errorMsg && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-xs flex justify-between items-center">
@@ -381,12 +391,9 @@ export default function App() {
             </div>
           )}
 
-          {/* =========================================================
-              VIEW 1: DASHBOARD (MAIN CONTENT CHECKER)
-          ========================================================= */}
+          {/* VIEW 1: DASHBOARD */}
           {currentView === "dashboard" && (
             <div className="space-y-6">
-              {/* Header Titles + Mode Switcher */}
               <div className="flex items-start justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
@@ -404,9 +411,6 @@ export default function App() {
                       contentType === "copy" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
                     <span>Marketing Copy</span>
                   </button>
                   <button
@@ -415,282 +419,246 @@ export default function App() {
                       contentType === "image" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
                     <span>Creative Image</span>
                   </button>
                 </div>
               </div>
 
-              {/* Main Checker Box (Original UI Card) */}
-              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                    CONTENT PURPOSE / CONTEXT
-                  </label>
-                  <input
-                    type="text"
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="e.g. Announce a product launch to enterprise clients"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                      MARKETING CONTENT
+              {/* CONTENT TYPE: MARKETING COPY */}
+              {contentType === "copy" && (
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      CONTENT PURPOSE / CONTEXT
                     </label>
-                    <span className="text-xs text-slate-400">
-                      {wordCount} words • {charCount} characters
-                    </span>
+                    <input
+                      type="text"
+                      value={purpose}
+                      onChange={(e) => setPurpose(e.target.value)}
+                      placeholder="e.g. Announce a product launch to enterprise clients"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500"
+                    />
                   </div>
-                  <textarea
-                    rows={6}
-                    value={marketingContent}
-                    onChange={(e) => setMarketingContent(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm text-slate-800 leading-relaxed focus:outline-none focus:bg-white focus:border-blue-500"
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                    <span>Evaluates against {approvedRulesCount} approved brand rules and saves to database.</span>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                        MARKETING CONTENT
+                      </label>
+                      <span className="text-xs text-slate-400">
+                        {wordCount} words • {charCount} characters
+                      </span>
+                    </div>
+                    <textarea
+                      rows={6}
+                      value={marketingContent}
+                      onChange={(e) => setMarketingContent(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm text-slate-800 leading-relaxed focus:outline-none focus:bg-white focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
                     <button
                       onClick={() => setMarketingContent("")}
-                      className="hover:underline cursor-pointer"
+                      className="text-xs text-blue-600 hover:underline font-medium cursor-pointer"
                     >
                       Clear
                     </button>
+                    <button
+                      onClick={handleCheckContent}
+                      disabled={loading}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-lg text-sm flex items-center gap-2 cursor-pointer shadow-sm transition"
+                    >
+                      <span>{loading ? "Auditing Content..." : "Check Content"}</span>
+                    </button>
                   </div>
                 </div>
+              )}
 
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    onClick={() =>
-                      setMarketingContent(
-                        "Unlock unprecedented hyper-growth with our revolutionary, ground-breaking AI solution. We guarantee 10x ROI overnight, crushing the outdated competition without compromise! Join 100,000+ top enterprises that blindly trust our proprietary cloud algorithms to dominate their industry."
-                      )
-                    }
-                    className="text-xs text-blue-600 hover:underline font-medium cursor-pointer"
-                  >
-                    Reset with example text
-                  </button>
+              {/* CONTENT TYPE: CREATIVE IMAGE */}
+              {contentType === "image" && (
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-5">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      CONTENT PURPOSE / CONTEXT
+                    </label>
+                    <input
+                      type="text"
+                      value={purpose}
+                      onChange={(e) => setPurpose(e.target.value)}
+                      placeholder="e.g. Announce a product launch to enterprise clients"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500"
+                    />
+                  </div>
 
-                  <button
-                    onClick={handleCheckContent}
-                    disabled={loading}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-lg text-sm flex items-center gap-2 cursor-pointer shadow-sm transition"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    <span>{loading ? "Auditing Content..." : "Check Content"}</span>
-                  </button>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                        UPLOAD MARKETING CREATIVE ASSET
+                      </label>
+                      <span className="text-xs text-slate-400">PNG, JPG, or JPEG • Max 5 MB</span>
+                    </div>
+
+                    <div
+                      onClick={() => imageInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50 rounded-xl p-8 text-center cursor-pointer transition"
+                    >
+                      <input
+                        type="file"
+                        ref={imageInputRef}
+                        onChange={handleImageSelection}
+                        accept="image/png,image/jpeg,image/jpg"
+                        className="hidden"
+                      />
+                      <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 mx-auto flex items-center justify-center mb-2">
+                        📷
+                      </div>
+                      <p className="text-sm font-medium text-slate-800">
+                        {imageFile ? imageFile.name : "Click to select or drop a marketing creative image"}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">Checks visible text, claims, tone, and visual brand rules</p>
+                    </div>
+
+                    {imagePreview && (
+                      <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center gap-4">
+                        <img src={imagePreview} alt="Preview" className="w-32 h-20 object-cover rounded-lg border" />
+                        <div className="text-xs space-y-1">
+                          <p className="font-semibold text-slate-900">{imageFile?.name}</p>
+                          <p className="text-slate-500">Ready to audit against active brand rules.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={handleCheckImage}
+                      disabled={loading || !imageFile}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-lg text-sm flex items-center gap-2 cursor-pointer shadow-sm transition disabled:opacity-50"
+                    >
+                      <span>{loading ? "Auditing Creative..." : "Check Creative Image"}</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Audit Results Card (Preserving Original Look & Adding Round 2 Diagnostic Fixes) */}
-              {auditResult && (
+              {/* AUDIT RESULTS (COPY) */}
+              {auditResult && contentType === "copy" && (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-6">
-                  {/* Score & Summary Header */}
                   <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-4">
-                      <div
-                        className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center font-bold text-white shadow-inner ${
-                          auditResult.status === "PASS"
-                            ? "bg-emerald-600"
-                            : auditResult.status === "NEEDS_REVISION"
-                            ? "bg-amber-500"
-                            : "bg-red-600"
-                        }`}
-                      >
+                      <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center font-bold text-white shadow-inner ${
+                        auditResult.status === "PASS" ? "bg-emerald-600" : auditResult.status === "NEEDS_REVISION" ? "bg-amber-500" : "bg-red-600"
+                      }`}>
                         <span className="text-xl leading-none">{auditResult.overall_score}</span>
                         <span className="text-[10px] uppercase opacity-80">/100</span>
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                              auditResult.status === "PASS"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : auditResult.status === "NEEDS_REVISION"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
+                          <span className="text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-100 text-slate-800">
                             {auditResult.status}
                           </span>
-                          <span className="text-xs text-slate-500">
-                            Found {auditResult.issues?.length || 0} issue(s) across {auditResult.active_rules_count} active rules
-                          </span>
+                          <span className="text-xs text-slate-500">{auditResult.summary}</span>
                         </div>
-                        <p className="text-xs text-slate-600 mt-1">{auditResult.summary}</p>
                       </div>
                     </div>
 
-                    {/* Downloadable Reports Dropdown (Round 3) */}
                     <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => downloadReport(auditResult.id, "md")}
-                        className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-2.5 py-1.5 rounded cursor-pointer"
-                        title="Download Markdown Report"
-                      >
-                        ↓ .MD Report
-                      </button>
-                      <button
-                        onClick={() => downloadReport(auditResult.id, "html")}
-                        className="border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded cursor-pointer"
-                        title="Download HTML Report"
-                      >
-                        ↓ .HTML
-                      </button>
-                      <button
-                        onClick={() => downloadReport(auditResult.id, "csv")}
-                        className="border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded cursor-pointer"
-                        title="Download CSV"
-                      >
-                        ↓ .CSV
-                      </button>
+                      <button onClick={() => downloadReport(auditResult.id, "md")} className="bg-slate-900 text-white text-xs font-semibold px-2.5 py-1.5 rounded cursor-pointer">↓ .MD</button>
+                      <button onClick={() => downloadReport(auditResult.id, "html")} className="border text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded cursor-pointer">↓ .HTML</button>
+                      <button onClick={() => downloadReport(auditResult.id, "csv")} className="border text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded cursor-pointer">↓ .CSV</button>
                     </div>
                   </div>
 
-                  {/* Diagnostic Findings with Severity, Explanation & 1-Click Fixes */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      DETECTED BRAND COMPLIANCE ISSUES ({auditResult.issues?.length || 0})
-                    </h3>
-
-                    {auditResult.issues?.length === 0 ? (
-                      <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium">
-                        ✓ All brand rules passed! No banned words, missing phrases, or claims issues found.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {auditResult.issues.map((issue, idx) => (
-                          <div
-                            key={idx}
-                            className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                                    SEVERITY_BADGES[issue.severity] || SEVERITY_BADGES.warning
-                                  }`}
-                                >
-                                  {issue.severity}
-                                </span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${CATEGORY_COLORS[issue.category]}`}>
-                                  {issue.category?.replace("_", " ")}
-                                </span>
-                                <span className="font-bold text-slate-800">{issue.title}</span>
-                              </div>
-                              <span className="text-[11px] text-slate-400">
-                                Rule Source: Page {issue.page_number} ({issue.section_title})
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-600 pt-1">
-                              <div>
-                                <span className="font-semibold text-slate-700">What is wrong: </span>
-                                <span>{issue.what_is_wrong}</span>
-                              </div>
-                              <div>
-                                <span className="font-semibold text-slate-700">How to fix: </span>
-                                <span>{issue.how_to_fix}</span>
-                              </div>
-                            </div>
-
-                            <div className="bg-white p-2.5 rounded border border-slate-200 flex items-center justify-between gap-4 mt-1">
-                              <span className="italic text-slate-500 text-[11px] truncate">
-                                Provenance Quote: "{issue.source_quote}"
-                              </span>
-                              {issue.suggested_replacement && (
-                                <button
-                                  onClick={() => handleApplyFix(issue)}
-                                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1 rounded shrink-0 cursor-pointer"
-                                >
-                                  Apply Fix: "{issue.suggested_replacement}"
-                                </button>
-                              )}
-                            </div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">DETECTED ISSUES ({auditResult.issues?.length || 0})</h3>
+                    {auditResult.issues?.map((issue, idx) => (
+                      <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${SEVERITY_BADGES[issue.severity]}`}>{issue.severity}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${CATEGORY_COLORS[issue.category]}`}>{issue.category}</span>
+                            <span className="font-bold text-slate-800">{issue.title}</span>
                           </div>
-                        ))}
+                        </div>
+                        <p className="text-slate-600">{issue.what_is_wrong}</p>
+                        {issue.suggested_replacement && (
+                          <button onClick={() => handleApplyFix(issue)} className="bg-emerald-600 text-white text-xs font-semibold px-3 py-1 rounded cursor-pointer">
+                            Apply Fix: "{issue.suggested_replacement}"
+                          </button>
+                        )}
                       </div>
-                    )}
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AUDIT RESULTS (IMAGE) */}
+              {imageAuditResult && contentType === "image" && (
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-6">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-xl flex flex-col items-center justify-center font-bold text-white shadow-inner bg-amber-500">
+                        <span className="text-xl leading-none">{imageAuditResult.overall_score}</span>
+                        <span className="text-[10px] uppercase opacity-80">/100</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded uppercase bg-slate-100 text-slate-800">
+                          {imageAuditResult.status}
+                        </span>
+                        <p className="text-xs text-slate-600 mt-1">{imageAuditResult.summary}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">CREATIVE AUDIT FINDINGS</h3>
+                    {imageAuditResult.issues?.map((issue, idx) => (
+                      <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${CATEGORY_COLORS[issue.category] || "bg-slate-100"}`}>{issue.category}</span>
+                        <p className="font-bold text-slate-800">{issue.title}</p>
+                        <p className="text-slate-600">{issue.what_is_wrong}</p>
+                        <p className="text-slate-500 italic">Fix: {issue.how_to_fix}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* =========================================================
-              VIEW 2: BRAND GUIDELINES (MULTI-PAGE UPLOAD & SUMMARY)
-          ========================================================= */}
+          {/* VIEW 2: GUIDELINES */}
           {currentView === "guidelines" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Brand Guidelines</h1>
                   <p className="text-sm text-slate-500 mt-1">
-                    Upload brand guidelines PDFs. Preflight reads longer documents, segments chapters, and extracts rules with exact page citations.
+                    Upload brand guidelines PDFs[cite: 2]. Preflight reads longer documents, segments chapters, and extracts rules with exact page citations[cite: 2].
                   </p>
                 </div>
-
                 <div className="flex items-center gap-3">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept=".pdf"
-                    onChange={handlePdfUpload}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2.5 rounded-lg cursor-pointer"
-                  >
+                  <input type="file" ref={fileInputRef} accept=".pdf" onChange={handlePdfUpload} className="hidden" />
+                  <button onClick={() => fileInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2.5 rounded-lg cursor-pointer">
                     {loading ? "Reading PDF..." : "Upload Brand Guideline PDF"}
                   </button>
-                  <button
-                    onClick={handleLoadDemoPdf}
-                    className="border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-lg cursor-pointer"
-                  >
+                  <button onClick={handleLoadDemoPdf} className="border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-lg cursor-pointer">
                     + Load 4-Page Demo PDF
                   </button>
                 </div>
               </div>
 
-              {/* Guidelines List */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {guidelines.map((g) => (
-                  <div
-                    key={g.id}
-                    onClick={() => fetchGuidelineDetails(g.id)}
-                    className={`p-5 rounded-xl border bg-white cursor-pointer transition ${
-                      activeGuideline?.id === g.id
-                        ? "border-blue-500 ring-2 ring-blue-100"
-                        : "border-slate-200 hover:border-slate-300"
-                    }`}
-                  >
+                  <div key={g.id} onClick={() => fetchGuidelineDetails(g.id)} className={`p-5 rounded-xl border bg-white cursor-pointer transition ${activeGuideline?.id === g.id ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-200 hover:border-slate-300"}`}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-bold text-sm text-slate-900">{g.name}</h3>
-                      <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
-                        {g.total_pages} Pages Parsed
-                      </span>
+                      <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{g.total_pages} Pages</span>
                     </div>
-                    <p className="text-xs text-slate-500 mb-3 truncate">{g.filename}</p>
+                    <p className="text-xs text-slate-500 mb-3">{g.filename}</p>
                     <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-100">
-                      <span className="text-slate-600">
-                        {g.approved_rules} of {g.total_rules} rules approved
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fetchGuidelineDetails(g.id);
-                          setCurrentView("rules");
-                        }}
-                        className="text-blue-600 font-semibold hover:underline"
-                      >
+                      <span>{g.approved_rules} of {g.total_rules} rules approved</span>
+                      <button onClick={(e) => { e.stopPropagation(); fetchGuidelineDetails(g.id); setCurrentView("rules"); }} className="text-blue-600 font-semibold hover:underline">
                         Inspect Rules →
                       </button>
                     </div>
@@ -700,97 +668,37 @@ export default function App() {
             </div>
           )}
 
-          {/* =========================================================
-              VIEW 3: BRAND RULES (PROVENANCE & USER APPROVAL)
-          ========================================================= */}
+          {/* VIEW 3: RULES */}
           {currentView === "rules" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Brand Rules & Approval</h1>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Review where each rule came from in the PDF and approve rules before they are used for content checking.
-                  </p>
+                  <p className="text-sm text-slate-500 mt-1">Review provenance and approve rules before enforcement.</p>
                 </div>
-
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleBulkApprove(1)}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg cursor-pointer"
-                  >
-                    Approve All Rules
-                  </button>
-                  <button
-                    onClick={() => handleBulkApprove(0)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg cursor-pointer"
-                  >
-                    Reset to Pending
-                  </button>
+                  <button onClick={() => handleBulkApprove(1)} className="bg-emerald-600 text-white text-xs font-semibold px-3 py-2 rounded-lg cursor-pointer">Approve All</button>
+                  <button onClick={() => handleBulkApprove(0)} className="bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg cursor-pointer">Reset</button>
                 </div>
               </div>
 
-              {/* Filter Tabs */}
-              <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                {["all", "approved", "pending", "banned_word", "required_phrase", "tone", "messaging", "claim"].map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setRuleFilter(f)}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-medium cursor-pointer ${
-                      ruleFilter === f
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    {f.replace("_", " ").toUpperCase()}
-                  </button>
-                ))}
-              </div>
-
-              {/* Rules List with Provenance */}
               <div className="space-y-3">
                 {filteredRules.map((rule) => (
-                  <div
-                    key={rule.id}
-                    className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex items-center justify-between gap-4"
-                  >
+                  <div key={rule.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex items-center justify-between gap-4">
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${CATEGORY_COLORS[rule.category]}`}>
-                          {rule.category?.replace("_", " ")}
-                        </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${SEVERITY_BADGES[rule.severity]}`}>
-                          {rule.severity}
-                        </span>
-                        <span className="text-xs text-slate-500 font-medium">
-                          Page {rule.page_number} • {rule.section_title}
-                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${CATEGORY_COLORS[rule.category]}`}>{rule.category}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${SEVERITY_BADGES[rule.severity]}`}>{rule.severity}</span>
+                        <span className="text-xs text-slate-500 font-medium">Page {rule.page_number} • {rule.section_title}</span>
                       </div>
                       <p className="text-sm font-semibold text-slate-900">{rule.rule_text}</p>
-                      <p className="text-xs text-slate-500 italic bg-slate-50 p-2 rounded border border-slate-100">
-                        Source Quote: "{rule.source_quote}"
-                      </p>
+                      <p className="text-xs text-slate-500 italic bg-slate-50 p-2 rounded">Source Quote: "{rule.source_quote}"</p>
                     </div>
-
-                    {/* Rule Approval Switches */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => handleToggleRuleStatus(rule.id, 1)}
-                        className={`text-xs px-3 py-1.5 rounded-md font-semibold border cursor-pointer ${
-                          rule.approved === 1
-                            ? "bg-emerald-600 text-white border-emerald-600"
-                            : "bg-white text-slate-700 border-slate-300 hover:bg-emerald-50"
-                        }`}
-                      >
+                      <button onClick={() => handleToggleRuleStatus(rule.id, 1)} className={`text-xs px-3 py-1.5 rounded-md font-semibold border cursor-pointer ${rule.approved === 1 ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700"}`}>
                         {rule.approved === 1 ? "✓ Approved" : "Approve"}
                       </button>
-                      <button
-                        onClick={() => handleToggleRuleStatus(rule.id, -1)}
-                        className={`text-xs px-3 py-1.5 rounded-md font-semibold border cursor-pointer ${
-                          rule.approved === -1
-                            ? "bg-red-600 text-white border-red-600"
-                            : "bg-white text-slate-700 border-slate-300 hover:bg-red-50"
-                        }`}
-                      >
+                      <button onClick={() => handleToggleRuleStatus(rule.id, -1)} className={`text-xs px-3 py-1.5 rounded-md font-semibold border cursor-pointer ${rule.approved === -1 ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-700"}`}>
                         {rule.approved === -1 ? "✕ Rejected" : "Reject"}
                       </button>
                     </div>
@@ -800,39 +708,29 @@ export default function App() {
             </div>
           )}
 
-          {/* =========================================================
-              VIEW 4: REVIEW HISTORY & BENCHMARK ACCURACY SUITE
-          ========================================================= */}
+          {/* VIEW 4: HISTORY */}
           {currentView === "history" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Review History & Reports</h1>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Download past compliance audits or test Preflight accuracy against sample marketing content.
-                  </p>
+                  <p className="text-sm text-slate-500 mt-1">Download past compliance reports or benchmark accuracy.</p>
                 </div>
-
-                <button
-                  onClick={handleRunBenchmark}
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2.5 rounded-lg cursor-pointer"
-                >
-                  {loading ? "Running Suite..." : "▶ Run Accuracy Benchmark Suite"}
+                <button onClick={handleRunBenchmark} disabled={loading} className="bg-blue-600 text-white text-xs font-semibold px-4 py-2.5 rounded-lg cursor-pointer">
+                  ▶ Run Accuracy Benchmark Suite
                 </button>
               </div>
 
-              {/* History Table */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold">
                     <tr>
                       <th className="p-3.5">ID</th>
-                      <th className="p-3.5">Content Title</th>
+                      <th className="p-3.5">Title</th>
                       <th className="p-3.5">Score</th>
                       <th className="p-3.5">Status</th>
                       <th className="p-3.5">Date</th>
-                      <th className="p-3.5 text-right">Download Report</th>
+                      <th className="p-3.5 text-right">Download</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -842,40 +740,15 @@ export default function App() {
                         <td className="p-3.5 font-bold text-slate-800">{item.content_title}</td>
                         <td className="p-3.5 font-bold">{item.overall_score}/100</td>
                         <td className="p-3.5">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              item.status === "PASS"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : item.status === "NEEDS_REVISION"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${item.status === "PASS" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
                             {item.status}
                           </span>
                         </td>
                         <td className="p-3.5 text-slate-500">{item.created_at?.slice(0, 10)}</td>
                         <td className="p-3.5 text-right space-x-1.5">
-                          <button
-                            onClick={() => downloadReport(item.id, "md")}
-                            className="text-blue-600 font-semibold hover:underline cursor-pointer"
-                          >
-                            .MD
-                          </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            onClick={() => downloadReport(item.id, "html")}
-                            className="text-blue-600 font-semibold hover:underline cursor-pointer"
-                          >
-                            .HTML
-                          </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            onClick={() => downloadReport(item.id, "csv")}
-                            className="text-blue-600 font-semibold hover:underline cursor-pointer"
-                          >
-                            .CSV
-                          </button>
+                          <button onClick={() => downloadReport(item.id, "md")} className="text-blue-600 font-semibold underline cursor-pointer">.MD</button>
+                          <button onClick={() => downloadReport(item.id, "html")} className="text-blue-600 font-semibold underline cursor-pointer">.HTML</button>
+                          <button onClick={() => downloadReport(item.id, "csv")} className="text-blue-600 font-semibold underline cursor-pointer">.CSV</button>
                         </td>
                       </tr>
                     ))}
@@ -887,61 +760,21 @@ export default function App() {
         </main>
       </div>
 
-      {/* Accuracy Benchmark Modal */}
+      {/* BENCHMARK MODAL */}
       {showBenchmarkModal && benchmarkData && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-6">
           <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl p-6 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h2 className="text-base font-bold text-slate-900">Compliance Detection Accuracy</h2>
-              <button onClick={() => setShowBenchmarkModal(false)} className="text-slate-400 font-bold cursor-pointer">
-                ✕
-              </button>
+              <button onClick={() => setShowBenchmarkModal(false)} className="text-slate-400 font-bold cursor-pointer">✕</button>
             </div>
-
             <div className="grid grid-cols-4 gap-3">
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg text-center">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Accuracy</span>
-                <p className="text-2xl font-bold text-blue-600 mt-0.5">{benchmarkData.accuracy}%</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg text-center">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Precision</span>
-                <p className="text-2xl font-bold text-emerald-600 mt-0.5">{benchmarkData.precision_score}%</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg text-center">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Recall</span>
-                <p className="text-2xl font-bold text-amber-600 mt-0.5">{benchmarkData.recall_score}%</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg text-center">
-                <span className="text-[10px] uppercase font-bold text-slate-500">F1 Score</span>
-                <p className="text-2xl font-bold text-purple-600 mt-0.5">{benchmarkData.f1_score}%</p>
-              </div>
+              <div className="bg-slate-50 border p-3 rounded-lg text-center"><span className="text-[10px] uppercase font-bold text-slate-500">Accuracy</span><p className="text-2xl font-bold text-blue-600">{benchmarkData.accuracy}%</p></div>
+              <div className="bg-slate-50 border p-3 rounded-lg text-center"><span className="text-[10px] uppercase font-bold text-slate-500">Precision</span><p className="text-2xl font-bold text-emerald-600">{benchmarkData.precision_score}%</p></div>
+              <div className="bg-slate-50 border p-3 rounded-lg text-center"><span className="text-[10px] uppercase font-bold text-slate-500">Recall</span><p className="text-2xl font-bold text-amber-600">{benchmarkData.recall_score}%</p></div>
+              <div className="bg-slate-50 border p-3 rounded-lg text-center"><span className="text-[10px] uppercase font-bold text-slate-500">F1 Score</span><p className="text-2xl font-bold text-purple-600">{benchmarkData.f1_score}%</p></div>
             </div>
-
-            <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 pr-1 text-xs">
-              {benchmarkData.results?.map((res) => (
-                <div key={res.sample_id} className="py-2.5 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-slate-800">{res.title}</p>
-                    <span className="text-[11px] text-slate-500">
-                      Score: {res.overall_score}/100 • Predicted: {res.status}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => downloadReport(res.check_id, "md")}
-                    className="text-blue-600 underline text-xs cursor-pointer"
-                  >
-                    Download Report
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setShowBenchmarkModal(false)}
-              className="w-full bg-slate-900 text-white py-2 rounded-lg text-xs font-semibold cursor-pointer"
-            >
-              Close
-            </button>
+            <button onClick={() => setShowBenchmarkModal(false)} className="w-full bg-slate-900 text-white py-2 rounded-lg text-xs font-semibold cursor-pointer">Close</button>
           </div>
         </div>
       )}

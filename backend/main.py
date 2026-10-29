@@ -614,52 +614,61 @@ def health_check():
 
 @router.post("/guidelines/upload")
 async def upload_guideline_pdf(file: UploadFile = File(...), name: Optional[str] = Form(None)):
-    if not file.filename.lower().endswith(".pdf"):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    pdf_bytes = await file.read()
-    pages_data = extract_pages_from_pdf(pdf_bytes)
-    if not pages_data:
-        raise HTTPException(status_code=400, detail="No readable pages found in PDF.")
+    try:
+        pdf_bytes = await file.read()
+        if not pdf_bytes:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    extracted = extract_rules_from_pages(pages_data)
-    full_text = "\n\n".join([f"--- Page {p['page_number']} ({p['section_title']}) ---\n{p['text']}" for p in pages_data])
-    guideline_name = name or file.filename.rsplit(".", 1)[0].replace("_", " ").title()
+        pages_data = extract_pages_from_pdf(pdf_bytes)
+        if not pages_data:
+            raise HTTPException(status_code=400, detail="No readable pages found in PDF.")
 
-    guideline_id = db.create_guideline(
-        name=guideline_name,
-        filename=file.filename,
-        total_pages=len(pages_data),
-        raw_text=full_text,
-        banned_words=extracted["banned_words"],
-        required_phrases=extracted["required_phrases"],
-        tone_profile=extracted["tone_profile"],
-        extracted_rules=extracted["rules"],
-    )
-    return db.get_guideline_by_id(guideline_id)
+        extracted = extract_rules_from_pages(pages_data)
+        full_text = "\n\n".join([f"--- Page {p['page_number']} ({p['section_title']}) ---\n{p['text']}" for p in pages_data])
+        guideline_name = name or file.filename.rsplit(".", 1)[0].replace("_", " ").title()
+
+        guideline_id = db.create_guideline(
+            name=guideline_name,
+            filename=file.filename,
+            total_pages=len(pages_data),
+            raw_text=full_text,
+            banned_words=extracted["banned_words"],
+            required_phrases=extracted["required_phrases"],
+            tone_profile=extracted["tone_profile"],
+            extracted_rules=extracted["rules"],
+        )
+        return db.get_guideline_by_id(guideline_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF Processing Error: {str(e)}")
 
 
 @router.post("/guidelines/load-demo")
 def load_demo_guideline():
-    pdf_bytes = build_sample_guideline_pdf()
-    pages_data = extract_pages_from_pdf(pdf_bytes)
-    extracted = extract_rules_from_pages(pages_data)
-    full_text = "\n\n".join([f"--- Page {p['page_number']} ({p['section_title']}) ---\n{p['text']}" for p in pages_data])
+    try:
+        pdf_bytes = build_sample_guideline_pdf()
+        pages_data = extract_pages_from_pdf(pdf_bytes)
+        extracted = extract_rules_from_pages(pages_data)
+        full_text = "\n\n".join([f"--- Page {p['page_number']} ({p['section_title']}) ---\n{p['text']}" for p in pages_data])
 
-    for r in extracted["rules"]:
-        r["approved"] = 1
+        for r in extracted["rules"]:
+            r["approved"] = 1
 
-    guideline_id = db.create_guideline(
-        name="Acme Cloud Brand Guidelines (4-Page Demo)",
-        filename="acme_cloud_guidelines_v3.pdf",
-        total_pages=len(pages_data),
-        raw_text=full_text,
-        banned_words=extracted["banned_words"],
-        required_phrases=extracted["required_phrases"],
-        tone_profile=extracted["tone_profile"],
-        extracted_rules=extracted["rules"],
-    )
-    return db.get_guideline_by_id(guideline_id)
+        guideline_id = db.create_guideline(
+            name="Acme Cloud Brand Guidelines (4-Page Demo)",
+            filename="acme_cloud_guidelines_v3.pdf",
+            total_pages=len(pages_data),
+            raw_text=full_text,
+            banned_words=extracted["banned_words"],
+            required_phrases=extracted["required_phrases"],
+            tone_profile=extracted["tone_profile"],
+            extracted_rules=extracted["rules"],
+        )
+        return db.get_guideline_by_id(guideline_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Demo Load Error: {str(e)}")
 
 
 @router.get("/guidelines")

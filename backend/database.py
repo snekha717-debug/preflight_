@@ -1,10 +1,11 @@
-﻿import sqlite3
+import os
+import sqlite3
 import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-DB_PATH = "preflight.db"
-
+# Use /tmp on Vercel serverless environment, local file otherwise
+DB_PATH = "/tmp/preflight.db" if os.environ.get("VERCEL") else "preflight.db"
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

@@ -778,6 +778,62 @@ def download_compliance_report(check_id: int, format: str = Query("md")):
         md_lines.append(f"{idx}. [{i.get('severity','').upper()}] {i.get('title','')} (Page {i.get('page_number',1)}): {i.get('what_is_wrong')} -> Fix: `{i.get('suggested_replacement')}`")
     return Response(content="\n".join(md_lines), media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="preflight_report_{check_id}.md"'})
 
+@router.post("/check-image")
+async def check_creative_image(
+    file: UploadFile = File(...),
+    guideline_id: int = Form(...),
+    content_title: Optional[str] = Form("Creative Image Check")
+):
+    if not file.filename or not file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+        raise HTTPException(status_code=400, detail="Only image files (PNG, JPG, JPEG, WEBP) are supported.")
+
+    try:
+        image_bytes = await file.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
+
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+        width, height = img.size
+        format_type = img.format
+
+        guideline = db.get_guideline_by_id(guideline_id)
+        if not guideline:
+            raise HTTPException(status_code=404, detail="Guideline not found.")
+
+        issues = []
+        # Check for minimum resolution standard
+        if width < 600 or height < 600:
+            issues.append({
+                "category": "image_quality",
+                "title": f"Low Resolution Image ({width}x{height})",
+                "severity": "warning",
+                "offending_text": f"Resolution: {width}x{height}px",
+                "what_is_wrong": "Image resolution is below the recommended minimum size of 600x600 pixels for crisp display across devices.",
+                "how_to_fix": "Export or provide a higher-resolution visual asset (at least 1200x1200px recommended).",
+                "suggested_replacement": "High-resolution asset (>= 1200px)",
+                "page_number": 1,
+                "section_title": "Visual Assets & Creative Standards",
+                "source_quote": "All marketing creatives and display images must be high-resolution and visually clear."
+            })
+
+        overall_score = 100 if not issues else 85
+        status = "PASS" if overall_score >= 90 else "NEEDS_REVISION"
+        summary = f"Creative image analyzed successfully ({width}x{height} {format_type}). Found {len(issues)} quality recommendation(s)."
+
+        saved = db.save_content_check(
+            guideline_id=guideline_id,
+            content_title=content_title or "Creative Image Check",
+            submitted_text=f"[Visual Asset: {file.filename} | Format: {format_type} | Dimensions: {width}x{height}px]",
+            overall_score=overall_score,
+            status=status,
+            summary=summary,
+            issues=issues,
+            corrected_text=f"[Optimized Asset Reference: {file.filename}]"
+        )
+        return saved
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image Processing Error: {str(e)}")
 
 @router.post("/benchmark/run")
 def run_accuracy_benchmark(payload: BenchmarkRequest):

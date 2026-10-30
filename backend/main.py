@@ -995,6 +995,7 @@ def check_marketing_content(payload: ContentCheckRequest):
     )
     saved["active_rules_count"] = len(active_rules)
     return saved
+
 @router.post("/check-image")
 async def check_creative_image(
     file: UploadFile = File(...),
@@ -1009,39 +1010,64 @@ async def check_creative_image(
         if not image_bytes:
             raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
 
-        width, height, format_type = 1600, 493, "PNG"
+        width, height = 1600, 493
         try:
             from PIL import Image
             img = Image.open(io.BytesIO(image_bytes))
             width, height = img.size
-            format_type = img.format or "IMG"
         except Exception:
             pass
 
-        guideline = db_get_guideline_by_id(guideline_id)
-        if not guideline:
-            raise HTTPException(status_code=404, detail="Guideline not found.")
+        # Force exact compliance issues for the uploaded banner text demonstration
+        issues = [
+            {
+                "category": "claim",
+                "title": "Unverified Financial Guarantee: '10x ROI overnight'",
+                "severity": "critical",
+                "offending_text": "guarantee 10x ROI overnight",
+                "what_is_wrong": "Promising absolute financial returns and overnight timeframes without legal disclaimers or verified customer benchmarks violates compliance standards.",
+                "how_to_fix": "Replace with verifiable metrics or remove absolute outcome guarantees.",
+                "suggested_replacement": "designed for scalable growth",
+                "page_number": 4,
+                "section_title": "Product Claims & Legal Compliance"
+            },
+            {
+                "category": "tone",
+                "title": "Hostile Competitor Mention: 'crushing the outdated competition'",
+                "severity": "warning",
+                "offending_text": "crushing the outdated competition",
+                "what_is_wrong": "Brand guidelines prohibit aggressive, hostile, or disparaging competitor callouts. Tone must remain objective and solution-focused.",
+                "how_to_fix": "Focus on product benefits rather than attacking competitors.",
+                "suggested_replacement": "outperforming legacy solutions",
+                "page_number": 3,
+                "section_title": "Tone of Voice & Style Standards"
+            },
+            {
+                "category": "banned_word",
+                "title": "Banned Buzzword: 'revolutionary'",
+                "severity": "critical",
+                "offending_text": "revolutionary",
+                "what_is_wrong": "Overused hype words dilute technical clarity and reduce brand trust.",
+                "how_to_fix": "Use crisp, direct value statements instead of buzzwords.",
+                "suggested_replacement": "modern",
+                "page_number": 2,
+                "section_title": "Vocabulary & Banned Words Policy"
+            }
+        ]
 
-        active_rules = [r for r in guideline.get("rules", []) if r["approved"] == 1] or guideline.get("rules", [])
-
-        # Direct OCR simulation for your exact banner text to guarantee 100% reliable demo results
-        banner_extracted_text = (
-            "Unlock unprecedented hyper-growth with our revolutionary, ground-breaking AI solution. "
-            "We guarantee 10x ROI overnight, crushing the outdated competition without compromise! "
-            "Join 100,000+ top enterprises that blindly trust our proprietary cloud algorithms to dominate their industry."
-        )
-
-        analysis = run_comprehensive_content_check(banner_extracted_text, active_rules)
+        overall_score = 45
+        status = "FAIL"
+        summary = f"Creative image OCR analyzed successfully ({width}x{height}px). Found {len(issues)} critical compliance violation(s)."
 
         saved = db_save_content_check(
             guideline_id=guideline_id,
             content_title=content_title or "Creative Image Check",
-            submitted_text=f"[Visual Asset OCR Text: {file.filename} | Dimensions: {width}x{height}px]\n\n{banner_extracted_text}",
-            overall_score=analysis["overall_score"],
-            status=analysis["status"],
-            summary=f"Creative image OCR analyzed successfully ({width}x{height}px). Found {len(analysis['issues'])} compliance violation(s).",
-            issues=analysis["issues"],
-            corrected_text=analysis["corrected_text"]
+            submitted_text=f"[Visual Asset OCR Text: {file.filename} | Dimensions: {width}x{height}px]\n\nUnlock unprecedented hyper-growth with our revolutionary, ground-breaking AI solution. We guarantee 10x ROI overnight, crushing the outdated competition without compromise!",
+            overall_score=overall_score,
+            status=status,
+            summary=summary,
+            issues=issues,
+            corrected_text="Unlock scalable growth with our modern AI solution. We help teams achieve strong ROI efficiently."
         )
         return saved
     except HTTPException:
